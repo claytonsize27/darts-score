@@ -53,7 +53,9 @@ class GameManager {
         if (!this.redemptionMode) {
             this.redemptionMode = true;
             this.redemptionPlayers = this.players.filter(p =>
-                !p.isEliminated && p !== winner
+                !p.isEliminated &&
+                p !== winner &&
+                p.totalScore !== this.targetScore
             );
            
             if (this.redemptionPlayers.length > 0) {
@@ -63,22 +65,44 @@ class GameManager {
                     redemption: true
                 };
             } else {
-                return this.declareWinner(winner);
+                return this.handleOvertime([winner]);
             }
         } else {
-            const existingWinner = this.redemptionPlayers.find(p => p.totalScore === this.targetScore);
-            if (existingWinner) {
-                return this.handleOvertime();
-            }
-            this.redemptionPlayers = this.redemptionPlayers.filter(p => p !== winner);
+            const winners = this.players.filter(p =>
+                p.totalScore === this.targetScore &&
+                !p.isEliminated
+            );
            
-            if (this.redemptionPlayers.length === 0) {
-                return this.declareWinner(winner);
+            if (winners.length > 1) {
+                return this.handleOvertime(winners);
             }
            
-            this.currentPlayerIndex = this.players.findIndex(p => p === this.redemptionPlayers[0]);
-            return {};
+            return this.declareWinner(winner);
         }
+    }
+
+    handleOvertime(winners) {
+        const previousScores = new Map();
+        this.players.forEach(p => previousScores.set(p, p.totalScore));
+       
+        this.targetScore += 100;
+        this.currentRound = 1;
+        this.redemptionMode = false;
+
+        this.players.forEach(p => {
+            p.isEliminated = !winners.includes(p);
+            if (!p.isEliminated) {
+                p.totalScore = previousScores.get(p);
+            }
+        });
+
+        this.redemptionPlayers = [];
+        this.currentPlayerIndex = this.players.findIndex(p => !p.isEliminated);
+
+        return {
+            message: `OVERTIME! New target: ${this.targetScore}`,
+            winners: winners.map(w => w.name)
+        };
     }
 
     declareWinner(winner) {
@@ -90,22 +114,9 @@ class GameManager {
         };
     }
 
-    handleOvertime() {
-        this.targetScore += 100;
-        this.currentRound = 1;
-        this.redemptionMode = false;
-        this.players.forEach(p => {
-            p.isEliminated = p.totalScore !== this.targetScore;
-        });
-        this.redemptionPlayers = [];
-        this.currentPlayerIndex = this.players.findIndex(p => !p.isEliminated);
-        return {
-            message: `OVERTIME! New target: ${this.targetScore}`
-        };
-    }
-
     moveToNextPlayer() {
         const startIndex = this.currentPlayerIndex;
+        const activePlayers = this.players.filter(p => !p.isEliminated);
        
         do {
             this.currentPlayerIndex = (this.currentPlayerIndex + 1) % this.players.length;
@@ -227,6 +238,9 @@ function submitScore() {
         setTimeout(() => elements.scoreInput.classList.remove('bust'), 500);
     } else if (result.message) {
         showMessage(result.message);
+        if (result.winners) {
+            showMessage(`${result.winners.join(', ')} advance to overtime!`);
+        }
         if (result.gameOver) showGameOver(result.message);
     }
 
