@@ -57,6 +57,9 @@ class GameManager {
                 p !== winner &&
                 p.totalScore !== this.targetScore
             );
+
+            // Force immediate score update for initial winner
+            winner.totalScore = this.targetScore;
            
             if (this.redemptionPlayers.length > 0) {
                 this.currentPlayerIndex = this.players.findIndex(p => p === this.redemptionPlayers[0]);
@@ -68,27 +71,38 @@ class GameManager {
                 return this.handleOvertime([winner]);
             }
         } else {
+            // Track all current winners
             const winners = this.players.filter(p =>
-                p.totalScore === this.targetScore &&
-                !p.isEliminated
+                !p.isEliminated &&
+                p.totalScore === this.targetScore
             );
+
+            // Force score updates for redemption winners
+            winners.forEach(w => w.totalScore = this.targetScore);
            
             if (winners.length > 1) {
                 return this.handleOvertime(winners);
+            } else if (winners.length === 1) {
+                return this.declareWinner(winners[0]);
             }
            
-            return this.declareWinner(winner);
+            return this.handleOvertime([winner]);
         }
     }
 
     handleOvertime(winners) {
+        // Preserve exact scores for overtime transition
         const previousScores = new Map();
-        this.players.forEach(p => previousScores.set(p, p.totalScore));
-       
+        winners.forEach(w => {
+            previousScores.set(w, w.totalScore);
+            w.totalScore = this.targetScore; // Maintain exact score display
+        });
+
         this.targetScore += 100;
         this.currentRound = 1;
         this.redemptionMode = false;
 
+        // Update player states
         this.players.forEach(p => {
             p.isEliminated = !winners.includes(p);
             if (!p.isEliminated) {
@@ -96,8 +110,16 @@ class GameManager {
             }
         });
 
+        // Reset game state
         this.redemptionPlayers = [];
-        this.currentPlayerIndex = this.players.findIndex(p => !p.isEliminated);
+        const activePlayers = this.players.filter(p => !p.isEliminated);
+       
+        if (activePlayers.length === 0) {
+            return this.declareWinner(null);
+        }
+
+        this.currentPlayerIndex = this.players.findIndex(p => p === activePlayers[0]);
+        this.winner = null;
 
         return {
             message: `OVERTIME! New target: ${this.targetScore}`,
@@ -106,6 +128,14 @@ class GameManager {
     }
 
     declareWinner(winner) {
+        if (!winner) {
+            this.gameOver = true;
+            return {
+                gameOver: true,
+                message: "Game Over! No winners"
+            };
+        }
+
         this.gameOver = true;
         this.winner = winner;
         return {
@@ -185,9 +215,9 @@ class GameManager {
     }
 }
 
+// UI Controller Implementation
 const game = new GameManager();
 
-// UI Elements
 const elements = {
     playerEntry: document.getElementById('playerEntry'),
     gameScreen: document.getElementById('gameScreen'),
@@ -204,12 +234,10 @@ const elements = {
     winnerText: document.getElementById('winnerText')
 };
 
-// Event Listeners
 elements.playerName.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') addPlayer();
 });
 
-// Game Functions
 function addPlayer() {
     if (elements.playerName.value.trim()) {
         game.addPlayer(elements.playerName.value);
@@ -239,7 +267,10 @@ function submitScore() {
     } else if (result.message) {
         showMessage(result.message);
         if (result.winners) {
-            showMessage(`${result.winners.join(', ')} advance to overtime!`);
+            setTimeout(() => {
+                showMessage(`${result.winners.join(', ')} advance to overtime!`);
+                updateGameDisplay();
+            }, 50);
         }
         if (result.gameOver) showGameOver(result.message);
     }
@@ -253,13 +284,15 @@ function updateGameDisplay() {
     elements.targetScore.textContent = game.targetScore;
 
     const currentPlayer = game.players[game.currentPlayerIndex];
-    elements.currentPlayerDisplay.innerHTML = `
-        <h3>Current Player</h3>
-        <div class="player-score ${currentPlayer.isEliminated ? 'eliminated' : ''}">
-            <span>${currentPlayer.name}</span>
-            <span>${currentPlayer.totalScore}</span>
-        </div>
-    `;
+    if (currentPlayer) {
+        elements.currentPlayerDisplay.innerHTML = `
+            <h3>Current Player</h3>
+            <div class="player-score ${currentPlayer.isEliminated ? 'eliminated' : ''}">
+                <span>${currentPlayer.name}</span>
+                <span>${currentPlayer.totalScore}</span>
+            </div>
+        `;
+    }
 
     elements.scoreboard.innerHTML = game.players
         .map(player => `
@@ -303,8 +336,10 @@ function updatePlayerList() {
 // Initial Load
 if (game.players.length > 0) {
     if (game.gameOver) {
-        showGameOver(`Winner: ${game.winner.name}`);
+        showGameOver(game.winner ? `Winner: ${game.winner.name}` : "Game Over");
     } else {
         startGame();
     }
+} else {
+    document.getElementById('loading').remove();
 }
