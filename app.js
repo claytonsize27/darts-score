@@ -8,6 +8,7 @@ class GameManager {
         this.gameOver = false;
         this.redemptionMode = false;
         this.redemptionPlayers = [];
+        this.winner = null;
         this.loadGame();
     }
 
@@ -30,15 +31,18 @@ class GameManager {
 
         if (newTotal > this.targetScore) {
             result = { bust: true, message: "BUST! Score reset" };
+            this.moveToNextPlayer();
+            this.saveGame();
+            return result;
+        }
+
+        player.totalScore = newTotal;
+        player.rounds.push(score);
+       
+        if (newTotal === this.targetScore) {
+            result = this.handleWin(player);
         } else {
-            player.totalScore = newTotal;
-            player.rounds.push(score);
-           
-            if (newTotal === this.targetScore) {
-                result = this.handleWin(player);
-            } else {
-                this.moveToNextPlayer();
-            }
+            this.moveToNextPlayer();
         }
 
         this.saveGame();
@@ -48,36 +52,74 @@ class GameManager {
     handleWin(winner) {
         if (!this.redemptionMode) {
             this.redemptionMode = true;
-            this.redemptionPlayers = this.players.filter(p => !p.isEliminated && p !== winner);
-            return {
-                message: `${winner.name} hit 301! Redemption round starts`,
-                redemption: true
-            };
+            this.redemptionPlayers = this.players.filter(p =>
+                !p.isEliminated && p !== winner
+            );
+           
+            if (this.redemptionPlayers.length > 0) {
+                this.currentPlayerIndex = this.players.findIndex(p => p === this.redemptionPlayers[0]);
+                return {
+                    message: `${winner.name} hit ${this.targetScore}! Redemption round starts`,
+                    redemption: true
+                };
+            } else {
+                return this.declareWinner(winner);
+            }
         } else {
-            this.redemptionPlayers = this.redemptionPlayers.filter(p => p !== winner);
-            if (this.redemptionPlayers.length === 0) {
+            const existingWinner = this.redemptionPlayers.find(p => p.totalScore === this.targetScore);
+            if (existingWinner) {
                 return this.handleOvertime();
             }
+            this.redemptionPlayers = this.redemptionPlayers.filter(p => p !== winner);
+           
+            if (this.redemptionPlayers.length === 0) {
+                return this.declareWinner(winner);
+            }
+           
+            this.currentPlayerIndex = this.players.findIndex(p => p === this.redemptionPlayers[0]);
+            return {};
         }
-        return {};
+    }
+
+    declareWinner(winner) {
+        this.gameOver = true;
+        this.winner = winner;
+        return {
+            gameOver: true,
+            message: `🏆 ${winner.name} wins! 🏆`
+        };
     }
 
     handleOvertime() {
         this.targetScore += 100;
         this.currentRound = 1;
         this.redemptionMode = false;
-        this.players.forEach(p => p.isEliminated = p.totalScore !== this.targetScore);
+        this.players.forEach(p => {
+            p.isEliminated = p.totalScore !== this.targetScore;
+        });
+        this.redemptionPlayers = [];
+        this.currentPlayerIndex = this.players.findIndex(p => !p.isEliminated);
         return {
             message: `OVERTIME! New target: ${this.targetScore}`
         };
     }
 
     moveToNextPlayer() {
+        const startIndex = this.currentPlayerIndex;
+       
         do {
             this.currentPlayerIndex = (this.currentPlayerIndex + 1) % this.players.length;
-        } while (this.players[this.currentPlayerIndex].isEliminated);
-       
-        if (this.currentPlayerIndex === 0) this.currentRound++;
+           
+            if (this.currentPlayerIndex === startIndex) {
+                if (!this.redemptionMode) this.currentRound++;
+                break;
+            }
+           
+        } while (
+            this.players[this.currentPlayerIndex].isEliminated ||
+            (this.redemptionMode &&
+            !this.redemptionPlayers.includes(this.players[this.currentPlayerIndex]))
+        );
     }
 
     resetGame(keepPlayers) {
@@ -96,6 +138,8 @@ class GameManager {
         this.targetScore = this.originalTarget;
         this.gameOver = false;
         this.redemptionMode = false;
+        this.redemptionPlayers = [];
+        this.winner = null;
         this.saveGame();
     }
 
@@ -106,7 +150,9 @@ class GameManager {
                 currentPlayerIndex: this.currentPlayerIndex,
                 currentRound: this.currentRound,
                 targetScore: this.targetScore,
-                redemptionMode: this.redemptionMode
+                redemptionMode: this.redemptionMode,
+                redemptionPlayers: this.redemptionPlayers.map(p => this.players.indexOf(p)),
+                winner: this.winner ? this.players.indexOf(this.winner) : -1
             }
         }));
     }
@@ -116,44 +162,56 @@ class GameManager {
         if (saved) {
             const data = JSON.parse(saved);
             this.players = data.players;
-            Object.assign(this, data.currentState);
+            const state = data.currentState;
+           
+            this.currentPlayerIndex = state.currentPlayerIndex;
+            this.currentRound = state.currentRound;
+            this.targetScore = state.targetScore;
+            this.redemptionMode = state.redemptionMode;
+            this.redemptionPlayers = state.redemptionPlayers.map(i => this.players[i]);
+            this.winner = state.winner >= 0 ? this.players[state.winner] : null;
         }
     }
 }
 
-// UI Controller
 const game = new GameManager();
 
-// DOM Elements
+// UI Elements
 const elements = {
+    playerEntry: document.getElementById('playerEntry'),
+    gameScreen: document.getElementById('gameScreen'),
+    gameOver: document.getElementById('gameOver'),
+    playerName: document.getElementById('playerName'),
     playerList: document.getElementById('playerList'),
+    startBtn: document.querySelector('.start-btn'),
     scoreInput: document.getElementById('scoreInput'),
     currentRound: document.getElementById('currentRound'),
     targetScore: document.getElementById('targetScore'),
     currentPlayerDisplay: document.getElementById('currentPlayerDisplay'),
     scoreboard: document.getElementById('scoreboard'),
-    gameMessages: document.getElementById('gameMessages')
+    gameMessages: document.getElementById('gameMessages'),
+    winnerText: document.getElementById('winnerText')
 };
 
 // Event Listeners
-document.getElementById('playerName').addEventListener('keypress', (e) => {
+elements.playerName.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') addPlayer();
 });
 
 // Game Functions
 function addPlayer() {
-    const nameInput = document.getElementById('playerName');
-    if (nameInput.value.trim()) {
-        game.addPlayer(nameInput.value);
-        nameInput.value = '';
+    if (elements.playerName.value.trim()) {
+        game.addPlayer(elements.playerName.value);
+        elements.playerName.value = '';
         updatePlayerList();
-        document.querySelector('.start-btn').disabled = game.players.length < 1;
+        elements.startBtn.disabled = game.players.length < 2;
     }
 }
 
 function startGame() {
-    document.getElementById('playerEntry').classList.add('hidden');
-    document.getElementById('gameScreen').classList.remove('hidden');
+    elements.playerEntry.classList.add('hidden');
+    elements.gameScreen.classList.remove('hidden');
+    elements.gameOver.classList.add('hidden');
     updateGameDisplay();
 }
 
@@ -169,7 +227,7 @@ function submitScore() {
         setTimeout(() => elements.scoreInput.classList.remove('bust'), 500);
     } else if (result.message) {
         showMessage(result.message);
-        if (result.redemption) startRedemptionRound();
+        if (result.gameOver) showGameOver(result.message);
     }
 
     elements.scoreInput.value = '';
@@ -179,18 +237,16 @@ function submitScore() {
 function updateGameDisplay() {
     elements.currentRound.textContent = game.currentRound;
     elements.targetScore.textContent = game.targetScore;
-   
-    // Current Player Display
+
     const currentPlayer = game.players[game.currentPlayerIndex];
     elements.currentPlayerDisplay.innerHTML = `
         <h3>Current Player</h3>
-        <div class="player-score">
+        <div class="player-score ${currentPlayer.isEliminated ? 'eliminated' : ''}">
             <span>${currentPlayer.name}</span>
             <span>${currentPlayer.totalScore}</span>
         </div>
     `;
 
-    // Scoreboard
     elements.scoreboard.innerHTML = game.players
         .map(player => `
             <div class="player-score ${player.isEliminated ? 'eliminated' : ''}">
@@ -203,19 +259,38 @@ function updateGameDisplay() {
 function showMessage(text, isError = false) {
     elements.gameMessages.textContent = text;
     elements.gameMessages.style.color = isError ? '#ff3b30' : '#007AFF';
-    setTimeout(() => elements.gameMessages.textContent = '', 3000);
+    elements.gameMessages.classList.remove('hidden');
+    setTimeout(() => elements.gameMessages.classList.add('hidden'), 3000);
 }
 
-// Initialize UI
+function showGameOver(message) {
+    elements.gameScreen.classList.add('hidden');
+    elements.gameOver.classList.remove('hidden');
+    elements.winnerText.textContent = message;
+}
+
+function resetGame(keepPlayers) {
+    game.resetGame(keepPlayers);
+    elements.gameOver.classList.add('hidden');
+    if (keepPlayers) {
+        startGame();
+    } else {
+        elements.playerEntry.classList.remove('hidden');
+        updatePlayerList();
+    }
+}
+
 function updatePlayerList() {
     elements.playerList.innerHTML = game.players
         .map(player => `<li>${player.name}</li>`)
         .join('');
 }
 
-// Load existing game on start
+// Initial Load
 if (game.players.length > 0) {
-    startGame();
-} else {
-    document.getElementById('loading').remove();
+    if (game.gameOver) {
+        showGameOver(`Winner: ${game.winner.name}`);
+    } else {
+        startGame();
+    }
 }
