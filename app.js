@@ -8,7 +8,7 @@ class GameManager {
         this.gameOver = false;
         this.redemptionMode = false;
         this.redemptionPlayers = [];
-        this.initialWinner = null;
+        this.initialWinners = [];
         this.winner = null;
         this.loadGame();
     }
@@ -61,13 +61,13 @@ class GameManager {
 
     handleInitialWin(winner) {
         this.redemptionMode = true;
-        this.initialWinner = winner;
+        this.initialWinners = [winner];
         this.redemptionPlayers = this.players.filter(p =>
             !p.isEliminated &&
             p !== winner &&
             p.totalScore !== this.targetScore
         );
-       
+
         if (this.redemptionPlayers.length > 0) {
             this.currentPlayerIndex = this.players.indexOf(this.redemptionPlayers[0]);
             return {
@@ -75,7 +75,7 @@ class GameManager {
                 redemption: true
             };
         }
-        return this.handleOvertime([winner]);
+        return this.handleOvertime(this.initialWinners);
     }
 
     handleRedemptionProgress(currentPlayer) {
@@ -91,12 +91,18 @@ class GameManager {
             p.totalScore === this.targetScore &&
             !p.isEliminated
         );
-        const allWinners = [this.initialWinner, ...redemptionWinners];
+
+        const allWinners = [...this.initialWinners, ...redemptionWinners];
         const uniqueWinners = [...new Set(allWinners)];
 
         if (uniqueWinners.length > 1) {
             return this.handleOvertime(uniqueWinners);
         }
+       
+        if (uniqueWinners.length === 0) {
+            return this.declareWinner(this.initialWinners[0]);
+        }
+
         return this.declareWinner(uniqueWinners[0]);
     }
 
@@ -111,10 +117,15 @@ class GameManager {
         this.targetScore = newTarget;
         this.currentRound = 1;
         this.redemptionMode = true;
+        this.initialWinners = winners;
         this.redemptionPlayers = winners.filter(p => !p.isEliminated);
-        this.initialWinner = null;
 
         winners.forEach(w => w.totalScore = previousScores.get(w));
+
+        if (this.redemptionPlayers.length === 0) {
+            return this.declareWinner(null);
+        }
+
         this.currentPlayerIndex = this.players.indexOf(this.redemptionPlayers[0]);
 
         return {
@@ -125,6 +136,14 @@ class GameManager {
     }
 
     declareWinner(winner) {
+        if (!winner) {
+            this.gameOver = true;
+            return {
+                gameOver: true,
+                message: "Game Over! No winners"
+            };
+        }
+
         this.gameOver = true;
         this.winner = winner;
         return {
@@ -169,7 +188,7 @@ class GameManager {
         this.gameOver = false;
         this.redemptionMode = false;
         this.redemptionPlayers = [];
-        this.initialWinner = null;
+        this.initialWinners = [];
         this.winner = null;
         this.saveGame();
     }
@@ -183,7 +202,7 @@ class GameManager {
                 targetScore: this.targetScore,
                 redemptionMode: this.redemptionMode,
                 redemptionPlayers: this.redemptionPlayers.map(p => this.players.indexOf(p)),
-                initialWinner: this.initialWinner ? this.players.indexOf(this.initialWinner) : -1,
+                initialWinners: this.initialWinners.map(w => this.players.indexOf(w)),
                 winner: this.winner ? this.players.indexOf(this.winner) : -1
             }
         }));
@@ -203,15 +222,15 @@ class GameManager {
             this.redemptionPlayers = (state.redemptionPlayers || [])
                 .map(i => this.players[i])
                 .filter(p => p);
-            this.initialWinner = state.initialWinner >= 0 ?
-                this.players[state.initialWinner] : null;
+            this.initialWinners = (state.initialWinners || [])
+                .map(i => this.players[i])
+                .filter(p => p);
             this.winner = state.winner >= 0 ?
                 this.players[state.winner] : null;
         }
     }
 }
 
-// UI Controller (unchanged except for message display timing)
 const game = new GameManager();
 
 const elements = {
@@ -333,7 +352,6 @@ function updatePlayerList() {
         .join('');
 }
 
-// Initial Load
 if (game.players.length > 0) {
     if (game.gameOver) {
         showGameOver(game.winner ? `Winner: ${game.winner.name}` : "Game Over");
