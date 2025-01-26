@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Darts 301 Tracker</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+</head>
+<body>
+    <div id="loading">Loading Game...</div>
+   
+    <!-- Player Entry Screen -->
+    <div class="screen" id="playerEntry">
+        <h1>Add Players</h1>
+        <div class="input-group">
+            <input type="text" id="playerName" placeholder="Player name">
+            <button onclick="addPlayer()">➕ Add</button>
+        </div>
+        <ul id="playerList"></ul>
+        <button class="start-btn" onclick="startGame()" disabled>Start Game</button>
+    </div>
+
+    <!-- Game Screen -->
+    <div class="screen hidden" id="gameScreen">
+        <div class="header">
+            <span>Round: <span id="currentRound">1</span></span>
+            <span>Target: <span id="targetScore">301</span></span>
+        </div>
+        <div id="currentPlayerDisplay"></div>
+        <div class="input-group">
+            <input type="number" id="scoreInput" placeholder="Enter score" min="0">
+            <button onclick="submitScore()">🎯 Submit</button>
+        </div>
+        <div id="scoreboard"></div>
+        <div id="gameMessages"></div>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div class="screen hidden" id="gameOver">
+        <h2>🎉 Game Over! 🎉</h2>
+        <p id="winnerText"></p>
+        <button onclick="resetGame(true)">🔄 Same Players</button>
+        <button onclick="resetGame(false)">🆕 New Game</button>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
