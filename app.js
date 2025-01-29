@@ -43,13 +43,11 @@ class GameManager {
         if (newTotal === this.targetScore) {
             result.message = `${player.name} hit ${this.targetScore}!`;
             player.totalScore = this.targetScore; // Lock score at target
-            if (!this.redemptionMode) {
+            if (this.redemptionMode) {
+                result = this.handleRedemptionProgress(player);
+            } else {
                 result = this.handleInitialWin(player);
             }
-        }
-
-        if (this.redemptionMode) {
-            result = this.handleRedemptionProgress(player);
         } else {
             this.moveToNextPlayer();
         }
@@ -109,21 +107,21 @@ class GameManager {
         const newTarget = this.targetScore + 100;
         this.targetScore = newTarget;
         this.currentRound = 1;
-        this.redemptionMode = true;
+        this.redemptionMode = false; // Overtime is NOT a redemption round initially
         this.initialWinners = winners;
-        this.redemptionPlayers = winners.filter(p => !p.isEliminated);
+        this.redemptionPlayers = []; // Clear redemption players
 
         winners.forEach(w => w.totalScore = previousScores.get(w));
 
-        if (this.redemptionPlayers.length === 0) {
+        if (winners.length === 0) {
             return this.declareWinner(null);
         }
 
-        this.currentPlayerIndex = this.players.indexOf(this.redemptionPlayers[0]);
+        this.currentPlayerIndex = this.players.indexOf(winners[0]);
 
         return {
-            message: `🚨 OVERTIME! New target: ${this.targetScore} - REDEMPTION ROUND STARTS 🚨`,
-            winners: this.redemptionPlayers.map(p => p.name),
+            message: `🚨 OVERTIME! New target: ${this.targetScore}`,
+            winners: winners.map(p => p.name),
             gameOver: false
         };
     }
@@ -224,7 +222,7 @@ class GameManager {
     }
 }
 
-// UI Controller
+// UI Controller (unchanged from previous version)
 const game = new GameManager();
 
 const elements = {
@@ -346,7 +344,6 @@ function updatePlayerList() {
         .join('');
 }
 
-// Initial Load
 if (game.players.length > 0) {
     if (game.gameOver) {
         showGameOver(game.winner ? `Winner: ${game.winner.name}` : "Game Over");
