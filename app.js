@@ -42,9 +42,8 @@ class GameManager {
 
         if (newTotal === this.targetScore) {
             result.message = `${player.name} hit ${this.targetScore}!`;
-            if (this.redemptionMode) {
-                player.totalScore = this.targetScore;
-            } else {
+            player.totalScore = this.targetScore; // Lock score at target
+            if (!this.redemptionMode) {
                 result = this.handleInitialWin(player);
             }
         }
@@ -87,23 +86,17 @@ class GameManager {
             return { continue: true };
         }
 
-        const redemptionWinners = this.players.filter(p =>
-            p.totalScore === this.targetScore &&
-            !p.isEliminated
+        const redemptionWinners = this.redemptionPlayers.filter(p =>
+            p.totalScore === this.targetScore
         );
 
-        const allWinners = [...this.initialWinners, ...redemptionWinners];
-        const uniqueWinners = [...new Set(allWinners)];
-
-        if (uniqueWinners.length > 1) {
+        if (redemptionWinners.length > 0) {
+            const allWinners = [...this.initialWinners, ...redemptionWinners];
+            const uniqueWinners = [...new Set(allWinners)];
             return this.handleOvertime(uniqueWinners);
         }
-       
-        if (uniqueWinners.length === 0) {
-            return this.declareWinner(this.initialWinners[0]);
-        }
 
-        return this.declareWinner(uniqueWinners[0]);
+        return this.declareWinner(this.initialWinners[0]);
     }
 
     handleOvertime(winners) {
@@ -231,6 +224,7 @@ class GameManager {
     }
 }
 
+// UI Controller
 const game = new GameManager();
 
 const elements = {
@@ -352,6 +346,7 @@ function updatePlayerList() {
         .join('');
 }
 
+// Initial Load
 if (game.players.length > 0) {
     if (game.gameOver) {
         showGameOver(game.winner ? `Winner: ${game.winner.name}` : "Game Over");
